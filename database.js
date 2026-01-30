@@ -104,6 +104,20 @@ db.serialize(() => {
         FOREIGN KEY(product_id) REFERENCES products(id)
     )`);
 
+    // 6. Categories
+    db.run(`CREATE TABLE IF NOT EXISTS categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        restaurant_id INTEGER,
+        name TEXT,
+        image_path TEXT,
+        FOREIGN KEY(restaurant_id) REFERENCES restaurants(id)
+    )`);
+
+    // Migración para products (agregar category_id)
+    db.run("ALTER TABLE products ADD COLUMN category_id INTEGER", (err) => {
+        if (!err) console.log("Columna category_id agregada a products");
+    });
+
     // Indexes for speed
     db.run("CREATE INDEX IF NOT EXISTS idx_orders_client ON orders(client_id)");
     db.run("CREATE INDEX IF NOT EXISTS idx_orders_driver ON orders(driver_id)");
