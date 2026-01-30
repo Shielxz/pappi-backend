@@ -122,7 +122,7 @@ router.post('/update-push-token', (req, res) => {
 
 // SUPER ADMIN ROUTES (Protected in prod, open for demo)
 router.get('/pending', (req, res) => {
-    db.all("SELECT id, name, email, phone, role, restaurant_name FROM users LEFT JOIN restaurants ON users.id = restaurants.owner_id WHERE users.status = 'PENDING_APPROVAL'", [], (err, rows) => {
+    db.all("SELECT users.id, users.name, users.email, users.phone, users.role, restaurants.name as restaurant_name FROM users LEFT JOIN restaurants ON users.id = restaurants.owner_id WHERE users.status = 'PENDING_APPROVAL'", [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
     });
