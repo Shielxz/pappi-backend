@@ -224,7 +224,7 @@ const sendPushNotification = async (userId, title, body, data = {}, category = n
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: true,
+        origin: "*",
         credentials: true,
         methods: ["GET", "POST"],
         allowedHeaders: ["Content-Type", "Authorization", "bypass-tunnel-reminder", "pinggy-skip-browser-warning", "Origin", "Accept", "X-Requested-With"]

@@ -45,7 +45,7 @@ router.post('/register-v2', (req, res) => {
             restStmt.finalize();
         }
 
-        res.status(201).json({ message: "Usuario creado. Verifique códigos.", userId, status });
+        res.status(201).json({ message: "Usuario creado. Verifique códigos.", userId, status, emailCode, smsCode });
     });
     stmt.finalize();
 });
