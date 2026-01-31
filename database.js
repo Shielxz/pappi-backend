@@ -1,51 +1,29 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const bcrypt = require('bcryptjs'); // Needed for hashing seed password
 
 // Connect to Database (Creates file if not exists)
 const dbPath = path.resolve(__dirname, 'pappi.db');
 const db = new sqlite3.Database(dbPath, (err) => {
     if (err) {
-        console.error('Error opening database ' + dbPath + ': ' + err.message);
+        console.error('Error opening database', err.message);
     } else {
-        console.log('Connected to SQLite database at ' + dbPath);
-    }
-});
+        // Migraciones para usuarios existentes o DB vieja
+        const addCol = (table, col, def) => {
+            db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`, (err) => {
+                if (!err) console.log(`Columna ${col} agregada a ${table}`);
+            });
+        };
 
-// Initialize Tables
-db.serialize(() => {
-    // 1. Users (Clients, Drivers, Admins)
-    db.run(`CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        email TEXT UNIQUE,
-        password TEXT, -- Hashed
-        role TEXT DEFAULT 'client', -- client, driver, admin
-        phone TEXT,
-        push_token TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        email_verified INTEGER DEFAULT 0,
-        phone_verified INTEGER DEFAULT 0,
-        verification_code_email TEXT,
-        verification_code_sms TEXT,
-        status TEXT DEFAULT 'PENDING_VERIFICATION' -- PENDING_VERIFICATION, PENDING_APPROVAL, ACTIVE
-    )`);
+        addCol('users', 'phone', 'TEXT');
+        addCol('users', 'email_verified', 'INTEGER DEFAULT 0');
+        addCol('users', 'phone_verified', 'INTEGER DEFAULT 0');
+        addCol('users', 'verification_code_email', 'TEXT');
+        addCol('users', 'verification_code_sms', 'TEXT');
+        addCol('users', 'status', "TEXT DEFAULT 'ACTIVE'"); // Default active for old users
 
-    // Migraciones para usuarios existentes o DB vieja
-    const addCol = (table, col, def) => {
-        db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`, (err) => {
-            if (!err) console.log(`Columna ${col} agregada a ${table}`);
-        });
-    };
-
-    addCol('users', 'phone', 'TEXT');
-    addCol('users', 'email_verified', 'INTEGER DEFAULT 0');
-    addCol('users', 'phone_verified', 'INTEGER DEFAULT 0');
-    addCol('users', 'verification_code_email', 'TEXT');
-    addCol('users', 'verification_code_sms', 'TEXT');
-    addCol('users', 'status', "TEXT DEFAULT 'ACTIVE'"); // Default active for old users
-
-    // 2. Restaurants
-    db.run(`CREATE TABLE IF NOT EXISTS restaurants (
+        // 2. Restaurants
+        db.run(`CREATE TABLE IF NOT EXISTS restaurants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         owner_id INTEGER,
         name TEXT,
@@ -58,12 +36,12 @@ db.serialize(() => {
         FOREIGN KEY(owner_id) REFERENCES users(id)
     )`);
 
-    // Intentar agregar columnas si ya existe la tabla (Migración simple)
-    db.run("ALTER TABLE restaurants ADD COLUMN lat REAL", (err) => { if (!err) console.log("Columna lat agregada"); });
-    db.run("ALTER TABLE restaurants ADD COLUMN lng REAL", (err) => { if (!err) console.log("Columna lng agregada"); });
+        // Intentar agregar columnas si ya existe la tabla (Migración simple)
+        db.run("ALTER TABLE restaurants ADD COLUMN lat REAL", (err) => { if (!err) console.log("Columna lat agregada"); });
+        db.run("ALTER TABLE restaurants ADD COLUMN lng REAL", (err) => { if (!err) console.log("Columna lng agregada"); });
 
-    // 3. Products (Menu)
-    db.run(`CREATE TABLE IF NOT EXISTS products (
+        // 3. Products (Menu)
+        db.run(`CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         restaurant_id INTEGER,
         name TEXT,
@@ -74,8 +52,8 @@ db.serialize(() => {
         FOREIGN KEY(restaurant_id) REFERENCES restaurants(id)
     )`);
 
-    // 4. Orders
-    db.run(`CREATE TABLE IF NOT EXISTS orders (
+        // 4. Orders
+        db.run(`CREATE TABLE IF NOT EXISTS orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         client_id INTEGER,
         driver_id INTEGER,
@@ -93,8 +71,8 @@ db.serialize(() => {
         FOREIGN KEY(restaurant_id) REFERENCES restaurants(id)
     )`);
 
-    // 5. Order Items
-    db.run(`CREATE TABLE IF NOT EXISTS order_items (
+        // 5. Order Items
+        db.run(`CREATE TABLE IF NOT EXISTS order_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         order_id INTEGER,
         product_id INTEGER,
@@ -104,8 +82,8 @@ db.serialize(() => {
         FOREIGN KEY(product_id) REFERENCES products(id)
     )`);
 
-    // 6. Categories
-    db.run(`CREATE TABLE IF NOT EXISTS categories (
+        // 6. Categories
+        db.run(`CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         restaurant_id INTEGER,
         name TEXT,
@@ -113,20 +91,20 @@ db.serialize(() => {
         FOREIGN KEY(restaurant_id) REFERENCES restaurants(id)
     )`);
 
-    // Migración para products (agregar category_id)
-    db.run("ALTER TABLE products ADD COLUMN category_id INTEGER", (err) => {
-        if (!err) console.log("Columna category_id agregada a products");
+        // Migración para products (agregar category_id)
+        db.run("ALTER TABLE products ADD COLUMN category_id INTEGER", (err) => {
+            if (!err) console.log("Columna category_id agregada a products");
+        });
+
+        // Indexes for speed
+        db.run("CREATE INDEX IF NOT EXISTS idx_orders_client ON orders(client_id)");
+        db.run("CREATE INDEX IF NOT EXISTS idx_orders_driver ON orders(driver_id)");
+        db.run("CREATE INDEX IF NOT EXISTS idx_orders_restaurant ON orders(restaurant_id)");
+        db.run("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)");
+        db.run("CREATE INDEX IF NOT EXISTS idx_products_restaurant ON products(restaurant_id)");
+        db.run("CREATE INDEX IF NOT EXISTS idx_categories_restaurant ON categories(restaurant_id)");
+
+        console.log("Database Tables Initialized & Indexed");
     });
-
-    // Indexes for speed
-    db.run("CREATE INDEX IF NOT EXISTS idx_orders_client ON orders(client_id)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_orders_driver ON orders(driver_id)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_orders_restaurant ON orders(restaurant_id)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_products_restaurant ON products(restaurant_id)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_categories_restaurant ON categories(restaurant_id)");
-
-    console.log("Database Tables Initialized & Indexed");
-});
 
 module.exports = db;
