@@ -225,7 +225,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
         origin: "*",
-        credentials: true,
+        credentials: false, // Must be false if origin is '*'
         methods: ["GET", "POST"],
         allowedHeaders: ["Content-Type", "Authorization", "bypass-tunnel-reminder", "pinggy-skip-browser-warning", "Origin", "Accept", "X-Requested-With"]
     },
