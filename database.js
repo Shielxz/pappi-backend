@@ -94,9 +94,20 @@ async function initDB() {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             email_verified INTEGER DEFAULT 0,
             phone_verified INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'PENDING_VERIFICATION' /* Although now we use pending table, legacy users might still be here */
+        )`);
+
+        // 1.5 Pending Registrations (Temporary Holding Area)
+        await client.execute(`CREATE TABLE IF NOT EXISTS pending_registrations (
+            email TEXT PRIMARY KEY,
+            name TEXT,
+            password TEXT,
+            role TEXT,
+            phone TEXT,
+            restaurant_name TEXT,
             verification_code_email TEXT,
             verification_code_sms TEXT,
-            status TEXT DEFAULT 'PENDING_VERIFICATION'
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
 
         try { await client.execute("ALTER TABLE users ADD COLUMN phone TEXT"); } catch (e) { }

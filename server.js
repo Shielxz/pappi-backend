@@ -238,6 +238,9 @@ const io = new Server(server, {
     allowUpgrades: true
 });
 
+// Make io accessible to routes
+app.set('io', io);
+
 // ===== SOCKET.IO REALTIME SYSTEM =====
 let drivers = {}; // { socketId: { name, status, location } }
 let admins = {}; // { socketId: { restaurantId } }

@@ -8,6 +8,7 @@ const JWT_SECRET = 'pappi_secret_key_123'; // In production, use env var
 
 // REGISTER
 // REGISTER V2 (Advanced with Verification)
+// REGISTER V2 (Late Binding: Temp Table)
 router.post('/register-v2', (req, res) => {
     const { name, email, password, role, phone, restaurantName } = req.body;
 
@@ -23,82 +24,126 @@ router.post('/register-v2', (req, res) => {
     const emailCode = Math.floor(100000 + Math.random() * 900000).toString();
     const smsCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-    const status = 'PENDING_VERIFICATION';
-
-    // Check if user exists
-    db.get("SELECT * FROM users WHERE email = ?", [email], (err, existingUser) => {
+    // Check if user already exists in MAIN table
+    db.get("SELECT status FROM users WHERE email = ?", [email], (err, existingUser) => {
         if (err) return res.status(500).json({ error: err.message });
 
         if (existingUser) {
-            // Allow re-registration ONLY if rejected
-            if (existingUser.status === 'REJECTED') {
-                console.log(`♻️ [RE-REGISTER] Overwriting rejected user: ${email}`);
-
-                const updateStmt = db.prepare(`
-                    UPDATE users 
-                    SET name = ?, password = ?, role = ?, phone = ?, verification_code_email = ?, verification_code_sms = ?, status = ?, created_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                `);
-
-                updateStmt.run(name, hash, validRole, phone, emailCode, smsCode, status, existingUser.id, function (err) {
-                    if (err) return res.status(500).json({ error: err.message });
-
-                    console.log(`\n📧 [MOCK EMAIL] Para: ${email} | Código: ${emailCode}`);
-                    console.log(`📱 [MOCK SMS] Para: ${phone} | Código: ${smsCode}\n`);
-
-                    // Ideally we should also reset their restaurant info here, but for now we keep the link.
-                    res.status(200).json({ message: "Cuenta reactivada. Verifique códigos.", userId: existingUser.id, status, emailCode, smsCode });
-                });
-                updateStmt.finalize();
-                return;
-            } else {
-                return res.status(400).json({ error: "El correo ya está registrado" });
+            // If Rejected, we allow re-registration logic to take over in the Verify step effectively, 
+            // OR we just block them here? User asked to allow re-try.
+            // If they are in DB as REJECTED, they are "locked" unless we overwrite them.
+            // BUT user requested: "no registrar el usuario en la base de datos hasta que confirme"
+            // So if they are REJECTED, they are ALREADY in the DB.
+            // Strategy: If REJECTED, we allow creating a pending_registration. 
+            // When validating, we update the existing user row instead of creating new.
+            if (existingUser.status !== 'REJECTED') {
+                return res.status(400).json({ error: "El correo ya está registrado y activo/pendiente." });
             }
         }
 
-        // New User
-        const insertStmt = db.prepare("INSERT INTO users (name, email, password, role, phone, verification_code_email, verification_code_sms, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        insertStmt.run(name, email, hash, validRole, phone, emailCode, smsCode, status, function (err) {
+        // Upsert into Pending Registrations (Replace if exists to allow retries)
+        const stmt = db.prepare(`
+            INSERT OR REPLACE INTO pending_registrations 
+            (email, name, password, role, phone, restaurant_name, verification_code_email, verification_code_sms) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        stmt.run(email, name, hash, validRole, phone, restaurantName || 'Sin Nombre', emailCode, smsCode, function (err) {
             if (err) return res.status(500).json({ error: err.message });
 
-            const userId = this.lastID;
             console.log(`\n📧 [MOCK EMAIL] Para: ${email} | Código: ${emailCode}`);
             console.log(`📱 [MOCK SMS] Para: ${phone} | Código: ${smsCode}\n`);
 
-            // If admin, create restaurant placeholder
-            if (validRole === 'admin' && restaurantName) {
-                const restStmt = db.prepare("INSERT INTO restaurants (owner_id, name, description, category) VALUES (?, ?, 'Restaurante Nuevo', 'General')");
-                restStmt.run(userId, restaurantName);
-                restStmt.finalize();
-            }
-            res.status(201).json({ message: "Usuario creado. Verifique códigos.", userId, status, emailCode, smsCode });
+            // Return dummy userId -1 or 0 since they are not real users yet
+            res.status(201).json({ message: "Códigos enviados.", userId: 0, email, emailCode, smsCode });
         });
-        insertStmt.finalize();
+        stmt.finalize();
     });
 });
 
-// VERIFY ACCOUNT
+// VERIFY ACCOUNT (Move from Pending to Users)
 router.post('/verify', (req, res) => {
-    const { userId, emailCode, smsCode } = req.body;
+    // We now expect 'email' instead of userId because userId gives us nothing in temp table
+    // But frontend sends userId. We need to handle both legacy and new flow?
+    // Let's adjust frontend to send email. Or use the stored pendingUserId if we can.
+    // Actually, req.body from frontend sends userId.
+    // API change required: VerificationScreen needs email.
+    // Quick fix: If userId is 0 (from register-v2 above), frontend must send email.
 
-    db.get("SELECT * FROM users WHERE id = ?", [userId], (err, user) => {
-        if (err || !user) return res.status(404).json({ error: "Usuario no encontrado" });
+    // User flow: Register -> receives (userId: 0, email: '...') -> Verify Screen needs email
+    // Let's modify frontend to pass email too.
 
-        if (user.verification_code_email !== emailCode) {
-            return res.status(400).json({ error: "Código de Email incorrecto" });
-        }
-        if (user.verification_code_sms !== smsCode) {
-            return res.status(400).json({ error: "Código SMS incorrecto" });
-        }
+    const { userId, email, emailCode, smsCode } = req.body;
 
-        // Success - Move to PENDING_APPROVAL
-        const newStatus = 'PENDING_APPROVAL';
-        db.run("UPDATE users SET status = ?, email_verified = 1, phone_verified = 1 WHERE id = ?", [newStatus, userId], (err) => {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true, message: "Cuenta verificada. Esperando aprobación del administrador.", status: newStatus });
+    if (!email) {
+        // Fallback for legacy flow (if any) or if frontend hasn't updated
+        return res.status(400).json({ error: "Email requerido para verificación." });
+    }
+
+    db.get("SELECT * FROM pending_registrations WHERE email = ?", [email], (err, pendingUser) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!pendingUser) return res.status(404).json({ error: "Solicitud de registro no encontrada o expirada" });
+
+        if (pendingUser.verification_code_email !== emailCode) return res.status(400).json({ error: "Código Email incorrecto" });
+        if (pendingUser.verification_code_sms !== smsCode) return res.status(400).json({ error: "Código SMS incorrecto" });
+
+        // Codes Valid! Move to Main Table.
+        // Check if updating a REJECTED user or creating new
+        db.get("SELECT id, status FROM users WHERE email = ?", [email], (err, existingUser) => {
+            if (existingUser && existingUser.status === 'REJECTED') {
+                // OVERWRITE REJECTED USER
+                const update = db.prepare(`
+                    UPDATE users 
+                    SET name=?, password=?, role=?, phone=?, status='PENDING_APPROVAL', created_at=CURRENT_TIMESTAMP 
+                    WHERE id=?
+                 `);
+                update.run(pendingUser.name, pendingUser.password, pendingUser.role, pendingUser.phone, existingUser.id, function (err) {
+                    if (err) return res.status(500).json({ error: err.message });
+                    finalizeVerification(req, res, existingUser.id, pendingUser.restaurant_name, pendingUser.email);
+                });
+                update.finalize();
+            } else if (existingUser) {
+                return res.status(400).json({ error: "Usuario ya existe." });
+            } else {
+                // CREATE NEW USER
+                const insert = db.prepare(`
+                    INSERT INTO users (name, email, password, role, phone, status) 
+                    VALUES (?, ?, ?, ?, ?, 'PENDING_APPROVAL')
+                `);
+                insert.run(pendingUser.name, pendingUser.email, pendingUser.password, pendingUser.role, pendingUser.phone, function (err) {
+                    if (err) return res.status(500).json({ error: err.message });
+                    const newId = this.lastID;
+                    finalizeVerification(req, res, newId, pendingUser.restaurant_name, pendingUser.email);
+                });
+                insert.finalize();
+            }
         });
     });
 });
+
+function finalizeVerification(req, res, userId, restaurantName, email) {
+    // Create Restaurant if needed
+    // As per requirement, we create stuff only now
+    if (restaurantName) {
+        // Check if restaurant exists (for rejected overwrite case, maybe we invoke same logic? simplify: just create new logic if needed or ignore)
+        // For simplicity: Insert always, if fails (rare), ignore. 
+        const rStmt = db.prepare("INSERT INTO restaurants (owner_id, name, description, category) VALUES (?, ?, 'Nuevo Restaurante', 'General')");
+        rStmt.run(userId, restaurantName);
+        rStmt.finalize();
+    }
+
+    // Clean pending
+    db.run("DELETE FROM pending_registrations WHERE email = ?", [email]);
+
+    // Socket Notify
+    const io = req.app.get('io');
+    if (io) {
+        io.emit('new_user_pending', { userId, email, message: "Nuevo usuario verificado" });
+        console.log("📢 Notificación Socket enviada: new_user_pending");
+    }
+
+    res.json({ success: true, message: "Verificado y creado. Esperando aprobación.", status: 'PENDING_APPROVAL' });
+}
 
 
 // LOGIN
