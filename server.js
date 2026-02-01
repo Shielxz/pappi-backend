@@ -14,25 +14,29 @@ let expo = new Expo();
 
 const app = express();
 
-// Standard CORS Configuration
+// MANUAL CORS OVERRIDE (Must be FIRST to ensure headers on ALL responses, including errors)
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, bypass-tunnel-reminder, pinggy-skip-browser-warning, Origin, Accept, X-Requested-With");
+
+    // Handle Preflight immediately
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
+
+// Standard CORS Configuration (Backup)
 const corsOptions = {
-    origin: '*', // Allow ALL origins (easier for tunnels)
-    credentials: false, // Disable strict credentials check since fetch doesn't use them
+    origin: '*',
+    credentials: false,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'bypass-tunnel-reminder', 'pinggy-skip-browser-warning', 'Origin', 'Accept', 'X-Requested-With']
 };
 
 app.use(cors(corsOptions));
-// Standard preflight for all routes
 app.options('*', cors(corsOptions));
-
-// MANUAL CORS OVERRIDE (Belt & Suspenders for Render/Vercel)
-app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, bypass-tunnel-reminder, pinggy-skip-browser-warning, Origin, Accept, X-Requested-With");
-    next();
-});
 
 app.use(compression());
 app.use(express.json());
