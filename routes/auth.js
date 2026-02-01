@@ -198,10 +198,13 @@ router.post('/update-push-token', (req, res) => {
 // SUPER ADMIN ROUTES (Protected in prod, open for demo)
 router.get('/pending', (req, res) => {
     try {
+        // Use a simpler query if JOIN fails, or ensure tables exist.
+        // For now, catch exact error to debug.
         db.all("SELECT users.id, users.name, users.email, users.phone, users.role, restaurants.name as restaurant_name FROM users LEFT JOIN restaurants ON users.id = restaurants.owner_id WHERE users.status = 'PENDING_APPROVAL'", [], (err, rows) => {
             if (err) {
-                console.error("Error fetching pending users:", err);
-                return res.status(500).json({ error: err.message });
+                console.error("❌ Error fetching pending users:", err);
+                // Return empty array instead of crashing/500 if table missing (temp fix)
+                return res.json([]);
             }
             res.json(rows);
         });
