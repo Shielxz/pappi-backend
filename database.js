@@ -61,6 +61,19 @@ const db = {
             console.error("DB GET ERROR:", e.message, "SQL:", sql);
             if (callback) callback(e);
         }
+    },
+    // Shim for db.prepare() used in auth.js
+    prepare: function (sql) {
+        return {
+            run: async function (...args) {
+                const callback = args[args.length - 1];
+                const params = args.slice(0, args.length - 1);
+                return db.run(sql, params, callback);
+            },
+            finalize: function () {
+                // No-op for LibSQL as there's no prepared statement state to clean up client-side
+            }
+        };
     }
 };
 
