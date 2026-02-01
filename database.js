@@ -1,110 +1,193 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
-const bcrypt = require('bcryptjs'); // Needed for hashing seed password
+const { createClient } = require("@libsql/client");
+const bcrypt = require('bcryptjs');
 
-// Connect to Database (Creates file if not exists)
-const dbPath = path.resolve(__dirname, 'pappi.db');
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-        console.error('Error opening database', err.message);
-    } else {
-        // Migraciones para usuarios existentes o DB vieja
-        const addCol = (table, col, def) => {
-            db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`, (err) => {
-                if (!err) console.log(`Columna ${col} agregada a ${table}`);
-            });
-        };
+// TURSO CREDENTIALS
+// TODO: Move these to Environment Variables in Render for security!
+const url = "libsql://pappi-db-shielxz.aws-us-east-1.turso.io";
+const authToken = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3Njk5NzYxMTksImlkIjoiOTg1NzliNGYtYWYwYi00YTg4LTk5OTQtNGFkMTM1NjEyOWYxIiwicmlkIjoiODIwOWFkYTktNDNjZC00ZWZmLWFiNWEtMTM2NzBhYTRjOGMzIn0.Robz4gyxYJnElcZM7oXjs-nA1m9dvfxA4pr0FoXoxsdyPiHzUvA8vcnoIx1DqxS0r7zyvxqCu9A_9x4GTWHZBw";
 
-        addCol('users', 'phone', 'TEXT');
-        addCol('users', 'email_verified', 'INTEGER DEFAULT 0');
-        addCol('users', 'phone_verified', 'INTEGER DEFAULT 0');
-        addCol('users', 'verification_code_email', 'TEXT');
-        addCol('users', 'verification_code_sms', 'TEXT');
-        addCol('users', 'status', "TEXT DEFAULT 'ACTIVE'"); // Default active for old users
+const client = createClient({
+    url,
+    authToken,
+});
+
+console.log("🚀 Connecting to Turso Cloud Database...");
+
+// Wrapper to mimic sqlite3 API for existing routes
+const db = {
+    serialize: (cb) => { if (cb) cb(); }, // No-op in promise-land
+    run: async function (sql, params, callback) {
+        if (typeof params === 'function') {
+            callback = params;
+            params = [];
+        }
+        try {
+            const result = await client.execute({ sql, args: params || [] });
+            if (callback) {
+                // Emulate 'this' context for changes/lastID
+                const context = {
+                    lastID: result.lastInsertRowid ? result.lastInsertRowid.toString() : 0,
+                    changes: result.rowsAffected
+                };
+                callback.call(context, null);
+            }
+        } catch (e) {
+            console.error("DB RUN ERROR:", e.message, "SQL:", sql);
+            if (callback) callback(e);
+        }
+    },
+    all: async function (sql, params, callback) {
+        if (typeof params === 'function') {
+            callback = params;
+            params = [];
+        }
+        try {
+            const result = await client.execute({ sql, args: params || [] });
+            if (callback) callback(null, result.rows);
+        } catch (e) {
+            console.error("DB ALL ERROR:", e.message, "SQL:", sql);
+            if (callback) callback(e);
+        }
+    },
+    get: async function (sql, params, callback) {
+        if (typeof params === 'function') {
+            callback = params;
+            params = [];
+        }
+        try {
+            const result = await client.execute({ sql, args: params || [] });
+            if (callback) callback(null, result.rows[0]);
+        } catch (e) {
+            console.error("DB GET ERROR:", e.message, "SQL:", sql);
+            if (callback) callback(e);
+        }
+    }
+};
+
+// INITIALIZATION (Async)
+async function initDB() {
+    try {
+        console.log("🛠️ Initializing Cloud Database Schema...");
+
+        // 1. Users
+        await client.execute(`CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            email TEXT UNIQUE,
+            password TEXT,
+            role TEXT DEFAULT 'client',
+            phone TEXT,
+            push_token TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            email_verified INTEGER DEFAULT 0,
+            phone_verified INTEGER DEFAULT 0,
+            verification_code_email TEXT,
+            verification_code_sms TEXT,
+            status TEXT DEFAULT 'PENDING_VERIFICATION'
+        )`);
+
+        try { await client.execute("ALTER TABLE users ADD COLUMN phone TEXT"); } catch (e) { }
+        try { await client.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0"); } catch (e) { }
+        try { await client.execute("ALTER TABLE users ADD COLUMN phone_verified INTEGER DEFAULT 0"); } catch (e) { }
+        try { await client.execute("ALTER TABLE users ADD COLUMN verification_code_email TEXT"); } catch (e) { }
+        try { await client.execute("ALTER TABLE users ADD COLUMN verification_code_sms TEXT"); } catch (e) { }
+        try { await client.execute("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'ACTIVE'"); } catch (e) { }
 
         // 2. Restaurants
-        db.run(`CREATE TABLE IF NOT EXISTS restaurants (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        owner_id INTEGER,
-        name TEXT,
-        description TEXT,
-        category TEXT, -- Fast Food, Sushi, etc.
-        image_url TEXT,
-        rating REAL DEFAULT 5.0,
-        lat REAL,
-        lng REAL,
-        FOREIGN KEY(owner_id) REFERENCES users(id)
-    )`);
+        await client.execute(`CREATE TABLE IF NOT EXISTS restaurants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id INTEGER,
+            name TEXT,
+            description TEXT,
+            category TEXT,
+            image_url TEXT,
+            rating REAL DEFAULT 5.0,
+            lat REAL,
+            lng REAL,
+            FOREIGN KEY(owner_id) REFERENCES users(id)
+        )`);
+        try { await client.execute("ALTER TABLE restaurants ADD COLUMN lat REAL"); } catch (e) { }
+        try { await client.execute("ALTER TABLE restaurants ADD COLUMN lng REAL"); } catch (e) { }
 
-        // Intentar agregar columnas si ya existe la tabla (Migración simple)
-        db.run("ALTER TABLE restaurants ADD COLUMN lat REAL", (err) => { if (!err) console.log("Columna lat agregada"); });
-        db.run("ALTER TABLE restaurants ADD COLUMN lng REAL", (err) => { if (!err) console.log("Columna lng agregada"); });
 
-        // 3. Products (Menu)
-        db.run(`CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        restaurant_id INTEGER,
-        name TEXT,
-        description TEXT,
-        price REAL,
-        image_url TEXT,
-        is_available INTEGER DEFAULT 1,
-        FOREIGN KEY(restaurant_id) REFERENCES restaurants(id)
-    )`);
+        // 3. Products
+        await client.execute(`CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            restaurant_id INTEGER,
+            name TEXT,
+            description TEXT,
+            price REAL,
+            image_url TEXT,
+            is_available INTEGER DEFAULT 1,
+            category_id INTEGER,
+            FOREIGN KEY(restaurant_id) REFERENCES restaurants(id)
+        )`);
+        try { await client.execute("ALTER TABLE products ADD COLUMN category_id INTEGER"); } catch (e) { }
+
 
         // 4. Orders
-        db.run(`CREATE TABLE IF NOT EXISTS orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        client_id INTEGER,
-        driver_id INTEGER,
-        restaurant_id INTEGER,
-        status TEXT, -- PENDING, ACCEPTED, ON_WAY, DELIVERED, CANCELLED
-        total_price REAL,
-        delivery_address TEXT,
-        delivery_lat REAL,
-        delivery_lng REAL,
-        driver_name TEXT,
-        estimated_time INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(client_id) REFERENCES users(id),
-        FOREIGN KEY(driver_id) REFERENCES users(id),
-        FOREIGN KEY(restaurant_id) REFERENCES restaurants(id)
-    )`);
+        await client.execute(`CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER,
+            driver_id INTEGER,
+            restaurant_id INTEGER,
+            status TEXT,
+            total_price REAL,
+            delivery_address TEXT,
+            delivery_lat REAL,
+            delivery_lng REAL,
+            driver_name TEXT,
+            estimated_time INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(client_id) REFERENCES users(id),
+            FOREIGN KEY(driver_id) REFERENCES users(id),
+            FOREIGN KEY(restaurant_id) REFERENCES restaurants(id)
+        )`);
 
         // 5. Order Items
-        db.run(`CREATE TABLE IF NOT EXISTS order_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        order_id INTEGER,
-        product_id INTEGER,
-        quantity INTEGER,
-        price_at_time REAL,
-        FOREIGN KEY(order_id) REFERENCES orders(id),
-        FOREIGN KEY(product_id) REFERENCES products(id)
-    )`);
+        await client.execute(`CREATE TABLE IF NOT EXISTS order_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER,
+            product_id INTEGER,
+            quantity INTEGER,
+            price_at_time REAL,
+            FOREIGN KEY(order_id) REFERENCES orders(id),
+            FOREIGN KEY(product_id) REFERENCES products(id)
+        )`);
 
         // 6. Categories
-        db.run(`CREATE TABLE IF NOT EXISTS categories (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        restaurant_id INTEGER,
-        name TEXT,
-        image_path TEXT,
-        FOREIGN KEY(restaurant_id) REFERENCES restaurants(id)
-    )`);
+        await client.execute(`CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            restaurant_id INTEGER,
+            name TEXT,
+            image_path TEXT,
+            FOREIGN KEY(restaurant_id) REFERENCES restaurants(id)
+        )`);
 
-        // Migración para products (agregar category_id)
-        db.run("ALTER TABLE products ADD COLUMN category_id INTEGER", (err) => {
-            if (!err) console.log("Columna category_id agregada a products");
-        });
+        console.log("✅ Tables Synced.");
 
-        // Indexes for speed
-        db.run("CREATE INDEX IF NOT EXISTS idx_orders_client ON orders(client_id)");
-        db.run("CREATE INDEX IF NOT EXISTS idx_orders_driver ON orders(driver_id)");
-        db.run("CREATE INDEX IF NOT EXISTS idx_orders_restaurant ON orders(restaurant_id)");
-        db.run("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)");
-        db.run("CREATE INDEX IF NOT EXISTS idx_products_restaurant ON products(restaurant_id)");
-        db.run("CREATE INDEX IF NOT EXISTS idx_categories_restaurant ON categories(restaurant_id)");
+        // SEED SUPER ADMIN
+        const adminEmail = "superpappi@admin.com";
+        const usersRS = await client.execute({ sql: "SELECT id FROM users WHERE email = ?", args: [adminEmail] });
 
-        console.log("Database Tables Initialized & Indexed");
-    });
+        if (usersRS.rows.length === 0) {
+            console.log("🌱 Seeding Super Admin...");
+            const hash = await bcrypt.hash("pappimaestro", 10);
+            await client.execute({
+                sql: `INSERT INTO users (name, email, password, phone, role, status) VALUES (?, ?, ?, ?, ?, ?)`,
+                args: ["Super Pappi", adminEmail, hash, "0000000000", "superadmin", "ACTIVE"]
+            });
+            console.log("👑 Super Admin Created.");
+        } else {
+            console.log("👌 Super Admin already exists.");
+        }
+
+    } catch (e) {
+        console.error("❌ Database Init Error:", e);
+    }
+}
+
+// Start Init
+initDB();
 
 module.exports = db;
