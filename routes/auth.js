@@ -93,6 +93,9 @@ router.post('/login', (req, res) => {
         if (user.status === 'PENDING_APPROVAL') {
             return res.status(403).json({ error: "Cuenta en revisión por el administrador", code: 'PENDING_APPROVAL' });
         }
+        if (user.status === 'REJECTED') {
+            return res.status(403).json({ error: "Su solicitud ha sido rechazada. Contacte soporte.", code: 'REJECTED' });
+        }
         // If status is null (legacy user), allow login or force update? 
         // For now, treat null as ACTIVE or migrate DB properly. 
         // Assuming DB migration set default 'ACTIVE' for old users.
