@@ -25,29 +25,59 @@ router.post('/register-v2', (req, res) => {
 
     const status = 'PENDING_VERIFICATION';
 
-    const stmt = db.prepare("INSERT INTO users (name, email, password, role, phone, verification_code_email, verification_code_sms, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-    stmt.run(name, email, hash, validRole, phone, emailCode, smsCode, status, function (err) {
-        if (err) {
-            if (err.message.includes('UNIQUE')) {
+    const stmt = db.prepare("SELECT * FROM users WHERE email = ?");
+    stmt.get(email, (err, existingUser) => {
+        stmt.finalize();
+
+        if (err) return res.status(500).json({ error: err.message });
+
+        if (existingUser) {
+            // Allow re-registration ONLY if rejected
+            if (existingUser.status === 'REJECTED') {
+                console.log(`♻️ [RE-REGISTER] Overwriting rejected user: ${email}`);
+
+                const updateStmt = db.prepare(`
+                    UPDATE users 
+                    SET name = ?, password = ?, role = ?, phone = ?, verification_code_email = ?, verification_code_sms = ?, status = ?, created_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                `);
+
+                updateStmt.run(name, hash, validRole, phone, emailCode, smsCode, status, existingUser.id, function (err) {
+                    if (err) return res.status(500).json({ error: err.message });
+
+                    console.log(`\n📧 [MOCK EMAIL] Para: ${email} | Código: ${emailCode}`);
+                    console.log(`📱 [MOCK SMS] Para: ${phone} | Código: ${smsCode}\n`);
+
+                    // Ideally we should also reset their restaurant info here, but for now we keep the link.
+                    res.status(200).json({ message: "Cuenta reactivada. Verifique códigos.", userId: existingUser.id, status, emailCode, smsCode });
+                });
+                updateStmt.finalize();
+                return;
+            } else {
                 return res.status(400).json({ error: "El correo ya está registrado" });
             }
-            return res.status(500).json({ error: err.message });
         }
 
-        const userId = this.lastID;
-        console.log(`\n📧 [MOCK EMAIL] Para: ${email} | Código: ${emailCode}`);
-        console.log(`📱 [MOCK SMS] Para: ${phone} | Código: ${smsCode}\n`);
+        // New User
+        const insertStmt = db.prepare("INSERT INTO users (name, email, password, role, phone, verification_code_email, verification_code_sms, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        insertStmt.run(name, email, hash, validRole, phone, emailCode, smsCode, status, function (err) {
+            if (err) return res.status(500).json({ error: err.message });
 
-        // If admin, create restaurant placeholder
-        if (validRole === 'admin' && restaurantName) {
-            const restStmt = db.prepare("INSERT INTO restaurants (owner_id, name, description, category) VALUES (?, ?, 'Restaurante Nuevo', 'General')");
-            restStmt.run(userId, restaurantName);
-            restStmt.finalize();
-        }
+            const userId = this.lastID;
+            console.log(`\n📧 [MOCK EMAIL] Para: ${email} | Código: ${emailCode}`);
+            console.log(`📱 [MOCK SMS] Para: ${phone} | Código: ${smsCode}\n`);
 
-        res.status(201).json({ message: "Usuario creado. Verifique códigos.", userId, status, emailCode, smsCode });
+            // If admin, create restaurant placeholder
+            if (validRole === 'admin' && restaurantName) {
+                const restStmt = db.prepare("INSERT INTO restaurants (owner_id, name, description, category) VALUES (?, ?, 'Restaurante Nuevo', 'General')");
+                restStmt.run(userId, restaurantName);
+                restStmt.finalize();
+            }
+
+            res.status(201).json({ message: "Usuario creado. Verifique códigos.", userId, status, emailCode, smsCode });
+        });
+        insertStmt.finalize();
     });
-    stmt.finalize();
 });
 
 // VERIFY ACCOUNT
