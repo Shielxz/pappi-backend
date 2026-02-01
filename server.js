@@ -58,7 +58,15 @@ app.get('/', (req, res) => {
     res.send('<h1>🛵 DELIVERY BACKEND ONLINE</h1><p>Status: 200 OK</p>');
 });
 
-// TEST DB ENDPOINT
+// HEALTH CHECK (Important for Render)
+app.get('/health', async (req, res) => {
+    try {
+        await db.get("SELECT 1"); // Simple DB check
+        res.status(200).json({ status: 'OK', db: 'Connected', timestamp: new Date().toISOString() });
+    } catch (e) {
+        res.status(500).json({ status: 'ERROR', db: e.message });
+    }
+});
 app.get('/api/test-db', (req, res) => {
     db.all("SELECT name FROM sqlite_master WHERE type='table'", [], (err, rows) => {
         if (err) {
@@ -234,7 +242,7 @@ const io = new Server(server, {
     cors: {
         origin: "*",
         credentials: false, // Must be false if origin is '*'
-        methods: ["GET", "POST"],
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization", "bypass-tunnel-reminder", "pinggy-skip-browser-warning", "Origin", "Accept", "X-Requested-With"]
     },
 
