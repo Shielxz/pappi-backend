@@ -25,10 +25,8 @@ router.post('/register-v2', (req, res) => {
 
     const status = 'PENDING_VERIFICATION';
 
-    const stmt = db.prepare("SELECT * FROM users WHERE email = ?");
-    stmt.get(email, (err, existingUser) => {
-        stmt.finalize();
-
+    // Check if user exists
+    db.get("SELECT * FROM users WHERE email = ?", [email], (err, existingUser) => {
         if (err) return res.status(500).json({ error: err.message });
 
         if (existingUser) {
@@ -73,7 +71,6 @@ router.post('/register-v2', (req, res) => {
                 restStmt.run(userId, restaurantName);
                 restStmt.finalize();
             }
-
             res.status(201).json({ message: "Usuario creado. Verifique códigos.", userId, status, emailCode, smsCode });
         });
         insertStmt.finalize();
