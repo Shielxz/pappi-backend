@@ -197,10 +197,18 @@ router.post('/update-push-token', (req, res) => {
 
 // SUPER ADMIN ROUTES (Protected in prod, open for demo)
 router.get('/pending', (req, res) => {
-    db.all("SELECT users.id, users.name, users.email, users.phone, users.role, restaurants.name as restaurant_name FROM users LEFT JOIN restaurants ON users.id = restaurants.owner_id WHERE users.status = 'PENDING_APPROVAL'", [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
+    try {
+        db.all("SELECT users.id, users.name, users.email, users.phone, users.role, restaurants.name as restaurant_name FROM users LEFT JOIN restaurants ON users.id = restaurants.owner_id WHERE users.status = 'PENDING_APPROVAL'", [], (err, rows) => {
+            if (err) {
+                console.error("Error fetching pending users:", err);
+                return res.status(500).json({ error: err.message });
+            }
+            res.json(rows);
+        });
+    } catch (e) {
+        console.error("CRASH fetching pending:", e);
+        res.status(500).json({ error: "Server crashed fetching pending users" });
+    }
 });
 
 router.post('/approve', (req, res) => {
