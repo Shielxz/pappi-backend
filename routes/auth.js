@@ -195,6 +195,36 @@ router.post('/update-push-token', (req, res) => {
     });
 });
 
+// SELF-HEALING: Ensure restaurant exists for user (Fix for User 11 issue)
+router.post('/ensure-restaurant', (req, res) => {
+    const { userId, name } = req.body;
+
+    // Check if exists
+    db.get("SELECT * FROM restaurants WHERE owner_id = ?", [userId], (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        if (row) {
+            return res.json(row); // Already exists, return it
+        }
+
+        // Create new
+        const stmt = db.prepare("INSERT INTO restaurants (owner_id, name, description, category) VALUES (?, ?, 'Nuevo Restaurante', 'General')");
+        stmt.run(userId, name || 'Mi Restaurante', function (err) {
+            if (err) return res.status(500).json({ error: err.message });
+
+            // Return the new restaurant object
+            res.json({
+                id: this.lastID,
+                owner_id: userId,
+                name: name || 'Mi Restaurante',
+                description: 'Nuevo Restaurante',
+                category: 'General'
+            });
+        });
+        stmt.finalize();
+    });
+});
+
 // SUPER ADMIN ROUTES (Protected in prod, open for demo)
 router.get('/pending', (req, res) => {
     try {
