@@ -14,6 +14,14 @@ let expo = new Expo();
 
 const app = express();
 
+// GLOBAL ERROR HANDLERS (Prevent silent crashes that look like CORS errors)
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err);
+});
+
 // MANUAL CORS OVERRIDE (Must be FIRST to ensure headers on ALL responses, including errors)
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
