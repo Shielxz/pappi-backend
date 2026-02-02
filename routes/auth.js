@@ -6,6 +6,44 @@ const db = require('../database');
 const router = express.Router();
 const JWT_SECRET = 'pappi_secret_key_123'; // In production, use env var
 
+// SIMPLE REGISTER (For Client/Driver mobile apps - No verification needed)
+router.post('/register', (req, res) => {
+    const { name, email, password, role } = req.body;
+
+    if (!name || !email || !password) {
+        return res.status(400).json({ error: "Nombre, email y contraseña son requeridos" });
+    }
+
+    // Only allow client/driver roles for simple registration
+    const validRole = ['client', 'driver'].includes(role) ? role : 'client';
+
+    // Check if user exists
+    db.get("SELECT id, status FROM users WHERE email = ?", [email], (err, existingUser) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        if (existingUser) {
+            return res.status(400).json({ error: "El correo ya está registrado" });
+        }
+
+        // Hash password and create user
+        const salt = bcrypt.genSaltSync(10);
+        const hash = bcrypt.hashSync(password, salt);
+
+        const stmt = db.prepare("INSERT INTO users (name, email, password, role, status) VALUES (?, ?, ?, ?, 'ACTIVE')");
+        stmt.run(name, email, hash, validRole, function (err) {
+            if (err) return res.status(500).json({ error: err.message });
+
+            console.log(`✅ Usuario registrado: ${email} (${validRole})`);
+            res.status(201).json({
+                message: "Cuenta creada exitosamente",
+                userId: this.lastID,
+                user: { id: this.lastID, name, email, role: validRole, status: 'ACTIVE' }
+            });
+        });
+        stmt.finalize();
+    });
+});
+
 // REGISTER
 // REGISTER V2 (Advanced with Verification)
 // REGISTER V2 (Late Binding: Temp Table)
@@ -126,9 +164,9 @@ function finalizeVerification(req, res, userId, restaurantName, email) {
     // FIXED: Ensure we ALWAYS create a restaurant, even if name is missing.
     // Use fallback name if necessary.
     const finalRestaurantName = restaurantName || 'Mi Restaurante';
-    
+
     const rStmt = db.prepare("INSERT INTO restaurants (owner_id, name, description, category) VALUES (?, ?, 'Nuevo Restaurante', 'General')");
-    rStmt.run(userId, finalRestaurantName, function(err) {
+    rStmt.run(userId, finalRestaurantName, function (err) {
         if (err) {
             console.error("Error creating restaurant automatically:", err.message);
             // If uniqueness error or other, we might want to log it but proceed to avoid blocking user flow entirely?
