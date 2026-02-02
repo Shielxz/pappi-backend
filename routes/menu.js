@@ -10,6 +10,34 @@ const router = express.Router();
 // Configure multer to use Cloudinary
 const upload = multer({ storage: storage });
 
+// Helper to log image compression stats
+const logImageCompression = (file, type) => {
+    if (!file) return;
+
+    const originalSize = file.size; // Original size from multer
+    const cloudinaryBytes = file.bytes; // Cloudinary optimized size
+    const cloudinaryUrl = file.path;
+
+    const formatBytes = (bytes) => {
+        if (!bytes) return 'N/A';
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    };
+
+    console.log(`\n📸 ===== IMAGE UPLOAD [${type.toUpperCase()}] =====`);
+    console.log(`   📁 Original size: ${formatBytes(originalSize)}`);
+    console.log(`   ✨ Cloudinary size: ${formatBytes(cloudinaryBytes)}`);
+
+    if (originalSize && cloudinaryBytes) {
+        const reduction = ((1 - (cloudinaryBytes / originalSize)) * 100).toFixed(1);
+        console.log(`   📉 Compression: ${reduction}% smaller!`);
+    }
+
+    console.log(`   🔗 URL: ${cloudinaryUrl}`);
+    console.log(`   ============================================\n`);
+};
+
 // ===== CATEGORIES =====
 
 // GET categories by restaurant
@@ -25,6 +53,9 @@ router.post('/categories', upload.single('image'), (req, res) => {
     const { restaurant_id, name } = req.body;
     const image_path = req.file ? req.file.path : null;
 
+    // Log compression stats
+    logImageCompression(req.file, 'Category Create');
+
     const stmt = db.prepare("INSERT INTO categories (restaurant_id, name, image_path) VALUES (?, ?, ?)");
     stmt.run(restaurant_id, name, image_path, function (err) {
         if (err) return res.status(500).json({ error: err.message });
@@ -37,6 +68,9 @@ router.post('/categories', upload.single('image'), (req, res) => {
 router.put('/categories/:id', upload.single('image'), (req, res) => {
     const { name } = req.body;
     const image_path = req.file ? req.file.path : null;
+
+    // Log compression stats
+    logImageCompression(req.file, 'Category Update');
 
     let query, params;
     if (image_path) {
@@ -107,6 +141,9 @@ router.post('/products', upload.single('image'), (req, res) => {
     const { restaurant_id, name, description, price, category_id } = req.body;
     const image_path = req.file ? req.file.path : null;
 
+    // Log compression stats
+    logImageCompression(req.file, 'Product Create');
+
     const stmt = db.prepare("INSERT INTO products (restaurant_id, name, description, price, image_path, category_id) VALUES (?, ?, ?, ?, ?, ?)");
     stmt.run(restaurant_id, name, description || '', price, image_path, category_id, function (err) {
         if (err) return res.status(500).json({ error: err.message });
@@ -118,6 +155,9 @@ router.post('/products', upload.single('image'), (req, res) => {
 router.put('/products/:id', upload.single('image'), (req, res) => {
     const { name, description, price, category_id } = req.body;
     const image_path = req.file ? req.file.path : null;
+
+    // Log compression stats
+    logImageCompression(req.file, 'Product Update');
 
     let query, params;
     if (image_path) {
