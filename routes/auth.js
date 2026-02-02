@@ -123,14 +123,21 @@ router.post('/verify', (req, res) => {
 
 function finalizeVerification(req, res, userId, restaurantName, email) {
     // Create Restaurant if needed
-    // As per requirement, we create stuff only now
-    if (restaurantName) {
-        // Check if restaurant exists (for rejected overwrite case, maybe we invoke same logic? simplify: just create new logic if needed or ignore)
-        // For simplicity: Insert always, if fails (rare), ignore. 
-        const rStmt = db.prepare("INSERT INTO restaurants (owner_id, name, description, category) VALUES (?, ?, 'Nuevo Restaurante', 'General')");
-        rStmt.run(userId, restaurantName);
-        rStmt.finalize();
-    }
+    // FIXED: Ensure we ALWAYS create a restaurant, even if name is missing.
+    // Use fallback name if necessary.
+    const finalRestaurantName = restaurantName || 'Mi Restaurante';
+    
+    const rStmt = db.prepare("INSERT INTO restaurants (owner_id, name, description, category) VALUES (?, ?, 'Nuevo Restaurante', 'General')");
+    rStmt.run(userId, finalRestaurantName, function(err) {
+        if (err) {
+            console.error("Error creating restaurant automatically:", err.message);
+            // If uniqueness error or other, we might want to log it but proceed to avoid blocking user flow entirely?
+            // Ideally should not fail.
+        } else {
+            console.log(`✅ Restaurante creado automáticamente para usuario ${userId}: ${finalRestaurantName}`);
+        }
+    });
+    rStmt.finalize();
 
     // Clean pending
     db.run("DELETE FROM pending_registrations WHERE email = ?", [email]);
