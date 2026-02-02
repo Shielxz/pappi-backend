@@ -148,6 +148,14 @@ async function initDB() {
         )`);
         try { await client.execute("ALTER TABLE products ADD COLUMN category_id INTEGER"); } catch (e) { }
 
+        // MIGRATION: Rename image_url to image_path for consistency with categories
+        try {
+            await client.execute("ALTER TABLE products RENAME COLUMN image_url TO image_path");
+            console.log("✅ Migrated products.image_url → image_path");
+        } catch (e) {
+            // Column might already be renamed or not exist
+        }
+
 
         // 4. Orders
         await client.execute(`CREATE TABLE IF NOT EXISTS orders (
