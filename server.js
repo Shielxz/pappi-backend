@@ -50,13 +50,19 @@ app.use(compression());
 app.use(express.json());
 
 
+const path = require('path');
+
 // ROUTES
 app.use('/api/auth', authRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/analytics', analyticsRoutes);
 
-// Serve uploaded images with cache
-app.use('/uploads', express.static('uploads', { maxAge: '1d' }));
+// Serve uploaded images with cache & CORS for static files
+app.use('/uploads', (req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Cross-Origin-Resource-Policy", "cross-origin");
+    next();
+}, express.static(path.join(__dirname, 'uploads'), { maxAge: '1d' }));
 
 // REQUEST LOGGER (exclude static files to reduce log flood)
 app.use((req, res, next) => {
