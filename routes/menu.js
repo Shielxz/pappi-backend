@@ -129,10 +129,10 @@ router.get('/products/category/:categoryId', (req, res) => {
 
 router.post('/products', upload.single('image'), (req, res) => {
     const { restaurant_id, name, description, price, category_id } = req.body;
-    const image_path = req.file ? `/uploads/${req.file.filename}` : null;
+    const image_url = req.file ? `/uploads/${req.file.filename}` : null;
 
-    const stmt = db.prepare("INSERT INTO products (restaurant_id, name, description, price, image_path, category_id) VALUES (?, ?, ?, ?, ?, ?)");
-    stmt.run(restaurant_id, name, description || '', price, image_path, category_id, function (err) {
+    const stmt = db.prepare("INSERT INTO products (restaurant_id, name, description, price, image_url, category_id) VALUES (?, ?, ?, ?, ?, ?)");
+    stmt.run(restaurant_id, name, description || '', price, image_url, category_id, function (err) {
         if (err) return res.status(500).json({ error: err.message });
         res.status(201).json({ message: "Product created", productId: this.lastID });
     });
@@ -141,12 +141,12 @@ router.post('/products', upload.single('image'), (req, res) => {
 
 router.put('/products/:id', upload.single('image'), (req, res) => {
     const { name, description, price, category_id } = req.body;
-    const image_path = req.file ? `/uploads/${req.file.filename}` : null;
+    const image_url = req.file ? `/uploads/${req.file.filename}` : null;
 
     let query, params;
-    if (image_path) {
-        query = "UPDATE products SET name = ?, description = ?, price = ?, image_path = ?, category_id = ? WHERE id = ?";
-        params = [name, description || '', price, image_path, category_id, req.params.id];
+    if (image_url) {
+        query = "UPDATE products SET name = ?, description = ?, price = ?, image_url = ?, category_id = ? WHERE id = ?";
+        params = [name, description || '', price, image_url, category_id, req.params.id];
     } else {
         query = "UPDATE products SET name = ?, description = ?, price = ?, category_id = ? WHERE id = ?";
         params = [name, description || '', price, category_id, req.params.id];
