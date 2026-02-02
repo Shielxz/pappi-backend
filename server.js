@@ -296,7 +296,7 @@ io.on('connection', (socket) => {
 
         // Check for active order to resume with Restaurant Data
         db.get(`
-            SELECT o.*, r.lat as rest_lat, r.lng as rest_lng, r.name as rest_name
+            SELECT o.*, r.lat as rest_lat, r.lng as rest_lng, r.name as rest_name, r.image_url as rest_image
             FROM orders o
             JOIN restaurants r ON o.restaurant_id = r.id
             WHERE o.driver_id = ? AND o.status NOT IN ('DELIVERED', 'CANCELLED')
@@ -326,7 +326,8 @@ io.on('connection', (socket) => {
                         latitude: order.rest_lat,
                         longitude: order.rest_lng
                     },
-                    restaurantName: order.rest_name
+                    restaurantName: order.rest_name,
+                    restaurantImage: order.rest_image
                 };
                 console.log("🔄 Resuming order for driver with items:", items.length);
                 socket.emit('resume_driver_order', fullOrder);
@@ -480,7 +481,7 @@ io.on('connection', (socket) => {
             }
 
             db.get(`
-                SELECT o.*, r.lat as rest_lat, r.lng as rest_lng, r.name as rest_name 
+                SELECT o.*, r.lat as rest_lat, r.lng as rest_lng, r.name as rest_name, r.image_url as rest_image
                 FROM orders o 
                 JOIN restaurants r ON o.restaurant_id = r.id 
                 WHERE o.id = ?
@@ -540,6 +541,7 @@ io.on('connection', (socket) => {
                             orderId,
                             restaurantId: order.restaurant_id,
                             restaurantName: order.rest_name,
+                            restaurantImage: order.rest_image,
                             items: JSON.stringify(items),
                             restaurantLocation: {
                                 latitude: order.rest_lat,
