@@ -49,7 +49,10 @@ router.put('/categories/:id', upload.single('image'), (req, res) => {
 
     const stmt = db.prepare(query);
     stmt.run(params, function (err) {
-        if (err) return res.status(500).json({ error: err.message });
+        if (err) {
+            console.error("❌ Error updating category:", err);
+            return res.status(500).json({ error: err.message });
+        }
         res.json({ message: "Category updated", image_path });
     });
     stmt.finalize();
@@ -127,7 +130,10 @@ router.put('/products/:id', upload.single('image'), (req, res) => {
 
     const stmt = db.prepare(query);
     stmt.run(params, function (err) {
-        if (err) return res.status(500).json({ error: err.message });
+        if (err) {
+            console.error("❌ Error updating product:", err);
+            return res.status(500).json({ error: err.message });
+        }
         res.json({ message: "Product updated" });
     });
     stmt.finalize();
