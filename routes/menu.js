@@ -23,7 +23,7 @@ router.get('/categories/:restaurantId', (req, res) => {
 // CREATE category with image
 router.post('/categories', upload.single('image'), (req, res) => {
     const { restaurant_id, name } = req.body;
-    const image_path = req.file ? `/uploads/${req.file.filename}` : null;
+    const image_path = req.file ? req.file.path : null;
 
     const stmt = db.prepare("INSERT INTO categories (restaurant_id, name, image_path) VALUES (?, ?, ?)");
     stmt.run(restaurant_id, name, image_path, function (err) {
@@ -36,7 +36,7 @@ router.post('/categories', upload.single('image'), (req, res) => {
 // UPDATE category
 router.put('/categories/:id', upload.single('image'), (req, res) => {
     const { name } = req.body;
-    const image_path = req.file ? `/uploads/${req.file.filename}` : null;
+    const image_path = req.file ? req.file.path : null;
 
     let query, params;
     if (image_path) {
@@ -102,7 +102,7 @@ router.get('/products/category/:categoryId', (req, res) => {
 
 router.post('/products', upload.single('image'), (req, res) => {
     const { restaurant_id, name, description, price, category_id } = req.body;
-    const image_url = req.file ? `/uploads/${req.file.filename}` : null;
+    const image_url = req.file ? req.file.path : null;
 
     const stmt = db.prepare("INSERT INTO products (restaurant_id, name, description, price, image_url, category_id) VALUES (?, ?, ?, ?, ?, ?)");
     stmt.run(restaurant_id, name, description || '', price, image_url, category_id, function (err) {
@@ -114,7 +114,7 @@ router.post('/products', upload.single('image'), (req, res) => {
 
 router.put('/products/:id', upload.single('image'), (req, res) => {
     const { name, description, price, category_id } = req.body;
-    const image_url = req.file ? `/uploads/${req.file.filename}` : null;
+    const image_url = req.file ? req.file.path : null;
 
     let query, params;
     if (image_url) {
@@ -180,7 +180,7 @@ router.put('/restaurants/:id', upload.single('image'), (req, res) => {
     }
     if (req.file) {
         updates.push('image_url = ?');
-        params.push(`/uploads/${req.file.filename}`);
+        params.push(req.file.path);
     }
 
     if (updates.length === 0) {
