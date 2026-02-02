@@ -5,6 +5,7 @@
   "dependencies": {
     "@libsql/client": "^0.17.0",
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^1.41.3",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -14,6 +15,7 @@
     "jsonwebtoken": "^9.0.3",
     "localtunnel": "^2.0.2",
     "multer": "^2.0.2",
+    "multer-storage-cloudinary": "^4.0.0",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.3",
     "sqlite3": "^5.1.7"

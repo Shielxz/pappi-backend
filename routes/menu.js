@@ -3,39 +3,12 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const db = require('../database');
+const { storage } = require('../services/cloudinaryConfig'); // Import Cloudinary storage
 
 const router = express.Router();
 
-// Ensure uploads directory exists
-const UPLOADS_DIR = path.join(__dirname, '../uploads');
-if (!fs.existsSync(UPLOADS_DIR)) {
-    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-}
-
-// Configure multer for image uploads
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'uploads/');
-    },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
-const upload = multer({
-    storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-    fileFilter: (req, file, cb) => {
-        const allowedTypes = /jpeg|jpg|png|gif|webp/;
-        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-        const mimetype = allowedTypes.test(file.mimetype);
-        if (extname && mimetype) {
-            return cb(null, true);
-        }
-        cb(new Error('Solo archivos de imagen permitidos'));
-    }
-});
+// Configure multer to use Cloudinary
+const upload = multer({ storage: storage });
 
 // ===== CATEGORIES =====
 
