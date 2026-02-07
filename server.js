@@ -344,7 +344,7 @@ io.on('connection', (socket) => {
                 const orderId = drivers[socket.id].currentOrder;
                 db.get("SELECT client_id FROM orders WHERE id = ?", [orderId], (err, order) => {
                     if (order && clients[order.client_id]) {
-                        io.to(clients[order.client_id]).emit('driver_location_update', coords);
+                        io.to(clients[order.client_id]).emit('driver_location_update', { ...coords, orderId });
                     }
                 });
             }
@@ -362,14 +362,28 @@ io.on('connection', (socket) => {
         console.log(`[CLIENT] Registrado: Usuario ${userId} (${socket.id})`);
         clients[userId] = socket.id;
 
-        // Check for active order to resume
-        db.get("SELECT * FROM orders WHERE client_id = ? AND status NOT IN ('DELIVERED', 'CANCELLED') LIMIT 1", [userId], (err, order) => {
-            if (order) {
-                socket.emit('resume_order', {
-                    orderId: order.id,
-                    status: order.status,
-                    estimatedTime: order.estimated_time,
-                    driverName: order.driver_name
+        // Check for active orders to resume (Fetch ALL, not just one)
+        db.all("SELECT * FROM orders WHERE client_id = ? AND status NOT IN ('DELIVERED', 'CANCELLED') ORDER BY created_at DESC", [userId], (err, orders) => {
+            if (orders && orders.length > 0) {
+                console.log(`[CLIENT] Resumiendo ${orders.length} pedidos para usuario ${userId}`);
+                orders.forEach(order => {
+                    // Try to find connected driver location for instant map update
+                    let currentDriverLoc = null;
+                    if (order.driver_id) {
+                        // Find driver socket by driverId
+                        const driverSocketId = Object.keys(drivers).find(sid => drivers[sid].driverId == order.driver_id);
+                        if (driverSocketId && drivers[driverSocketId].location) {
+                            currentDriverLoc = drivers[driverSocketId].location;
+                        }
+                    }
+
+                    socket.emit('resume_order', {
+                        orderId: order.id,
+                        status: order.status,
+                        estimatedTime: order.estimated_time,
+                        driverName: order.driver_name,
+                        driverLocation: currentDriverLoc // Send cached location if available
+                    });
                 });
             }
         });

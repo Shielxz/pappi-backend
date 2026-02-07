@@ -123,7 +123,7 @@ router.post('/restaurants', (req, res) => {
 // ===== PRODUCTS =====
 
 router.get('/products/:restaurantId', (req, res) => {
-    db.all("SELECT * FROM products WHERE restaurant_id = ? ORDER BY category, name", [req.params.restaurantId], (err, rows) => {
+    db.all("SELECT * FROM products WHERE restaurant_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY category_id, name", [req.params.restaurantId], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
     });
@@ -131,7 +131,7 @@ router.get('/products/:restaurantId', (req, res) => {
 
 // GET products by category
 router.get('/products/category/:categoryId', (req, res) => {
-    db.all("SELECT * FROM products WHERE category_id = ? ORDER BY name", [req.params.categoryId], (err, rows) => {
+    db.all("SELECT * FROM products WHERE category_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY name", [req.params.categoryId], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
     });
@@ -180,7 +180,8 @@ router.put('/products/:id', upload.single('image'), (req, res) => {
 });
 
 router.delete('/products/:id', (req, res) => {
-    db.run("DELETE FROM products WHERE id = ?", [req.params.id], function (err) {
+    // SOFT DELETE: Mark as deleted instead of removing row to preserve order history
+    db.run("UPDATE products SET is_deleted = 1 WHERE id = ?", [req.params.id], function (err) {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ message: "Product deleted" });
     });

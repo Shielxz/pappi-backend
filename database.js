@@ -152,9 +152,13 @@ async function initDB() {
         try {
             await client.execute("ALTER TABLE products RENAME COLUMN image_url TO image_path");
             console.log("✅ Migrated products.image_url → image_path");
-        } catch (e) {
-            // Column might already be renamed or not exist
-        }
+        } catch (e) { }
+
+        // MIGRATION: Soft Delete support
+        try {
+            await client.execute("ALTER TABLE products ADD COLUMN is_deleted INTEGER DEFAULT 0");
+            console.log("✅ Added products.is_deleted");
+        } catch (e) { }
 
 
         // 4. Orders
