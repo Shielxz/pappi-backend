@@ -5,20 +5,33 @@ const db = require('../database');
 // GET /api/analytics/summary
 // Returns: total_sales, total_orders, avg_ticket, pending_orders
 // Helper to get range condition
-const getRangeCondition = (range) => {
-    if (range === 'today') {
-        return " AND created_at >= date('now', 'start of day')";
+const getRangeCondition = (range, start, end) => {
+    switch (range) {
+        case 'today':
+            return " AND created_at >= date('now', 'start of day')";
+        case 'week':
+            return " AND created_at >= date('now', '-7 days')";
+        case 'month':
+            return " AND created_at >= date('now', 'start of month')";
+        case 'year':
+            return " AND created_at >= date('now', 'start of year')";
+        case 'range':
+            if (start && end) {
+                return ` AND date(created_at) BETWEEN '${start}' AND '${end}'`;
+            }
+            return "";
+        default:
+            return ""; // All time
     }
-    return ""; // Default: All time or limited by other logic
 };
 
 // GET /api/analytics/summary
 // Returns: total_sales, total_orders, avg_ticket, pending_orders
 router.get('/summary/:restaurantId', (req, res) => {
     const { restaurantId } = req.params;
-    const { range } = req.query;
+    const { range, start, end } = req.query;
 
-    const dateFilter = getRangeCondition(range);
+    const dateFilter = getRangeCondition(range, start, end);
 
     const query = `
         SELECT 
@@ -42,11 +55,14 @@ router.get('/summary/:restaurantId', (req, res) => {
 });
 
 // GET /api/analytics/sales-chart
-// Returns sales grouped by day for the last 30 days
+// Returns sales grouped by day
 router.get('/sales-chart/:restaurantId', (req, res) => {
     const { restaurantId } = req.params;
-    // Sales chart always shows 30 days trend regardless of "today" filter usually, 
-    // or we could limit it. For now, keep it 30 days fixed as it's a "Trend".
+    const { range, start, end } = req.query;
+
+    const dateFilter = getRangeCondition(range, start, end);
+    const defaultLimit = range ? "" : "AND created_at >= date('now', '-30 days')"; // Default to 30 days if no range
+
     const query = `
         SELECT 
             DATE(created_at) as date, 
@@ -55,7 +71,7 @@ router.get('/sales-chart/:restaurantId', (req, res) => {
         FROM orders 
         WHERE restaurant_id = ? 
           AND status != 'CANCELLED'
-          AND created_at >= date('now', '-30 days')
+          ${dateFilter || defaultLimit}
         GROUP BY DATE(created_at)
         ORDER BY date ASC
     `;
@@ -69,8 +85,8 @@ router.get('/sales-chart/:restaurantId', (req, res) => {
 // GET /api/analytics/status-distribution
 router.get('/status-distribution/:restaurantId', (req, res) => {
     const { restaurantId } = req.params;
-    const { range } = req.query;
-    const dateFilter = getRangeCondition(range);
+    const { range, start, end } = req.query;
+    const dateFilter = getRangeCondition(range, start, end);
 
     const query = `SELECT status, COUNT(*) as count FROM orders WHERE restaurant_id = ? ${dateFilter} GROUP BY status`;
 
